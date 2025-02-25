@@ -1,0 +1,20 @@
+name: chatbot_env
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.9
+  - fastapi
+  - uvicorn
+  - sqlalchemy
+  - psycopg2
+  - numpy
+  - pandas
+  - sentence-transformers
+  - transformers
+  - scikit-learn
+
+
+# 실행방법
+# conda env create -f environment.yml
+# conda activate chatbot_env
