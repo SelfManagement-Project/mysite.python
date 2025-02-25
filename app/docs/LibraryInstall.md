@@ -1,6 +1,6 @@
-conda create -n nagnae-ai python=3.10
+conda create -n MYSITE.PYTHON python=3.13
 
-conda acivate nagnae-ai
+conda activate MYSITE.PYTHON
 
 conda install cudatoolkit
 
