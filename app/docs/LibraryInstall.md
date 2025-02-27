@@ -7,63 +7,21 @@ conda install cudatoolkit
 pip install insightface
 ※사용할려면 'vs_BuildTools.exe'를 설치해야한다.
 
-pip install transformers
+<!-- pip install transformers
 
 pip install happytransformer
 
-pip install fastapi
+pip install fastapi -->
 
 pip install "uvicorn[standard]"
 
 uvicorn main:app
 
-pip install mysql-connector-python sqlalchemy
+pip install psycopg2-binary sqlalchemy
 
+pip install sentence-transformers
 
-pip install tensorflow
-
-pip install tf-keras
-
-pip install spacy
-
-python -m spacy download ko_core_news_sm
-
-pip install rank_bm25
-
-pip install chromadb
-
-pip install spacy
-python -m spacy download en_core_web_sm
-python -m spacy download ko_core_news_sm
-python -m spacy download zh_core_web_sm
-python -m spacy download ja_core_news_sm
-
-pip install pdfplumber
-
-pip install deep-translator
-
-pip install elasticsearch
-
-pip install tabula-py
-
-pip install JPype1
-
-pip install fitz
-
-pip install frontend
-
-pip install PyMuPDF
-
-pip install googlesearch-python
-
-pip install konlpy
-
-pip install elasticsearch langchain-community
-
-pip install fasttext-wheel
-
-pip install mysqlclient
-
+pip install qdrant-client numpy
 
 
 
