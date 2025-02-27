@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from db.connection.database import engine, Base, get_db
 from sqlalchemy import text
@@ -25,6 +26,14 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
+# ✅ CORS 미들웨어 추가
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 모든 도메인 허용 (보안상 문제 있으면 특정 도메인만 허용)
+    allow_credentials=True,
+    allow_methods=["*"],  # 모든 HTTP 메서드 허용 (GET, POST, PUT, DELETE 등)
+    allow_headers=["*"],  # 모든 헤더 허용
+)
 
 @app.post("/index/all")
 def index_all_tables(db: Session = Depends(get_db)):
@@ -245,8 +254,9 @@ def get_table_data(table_name: str, limit: int = 10, db: Session = Depends(get_d
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database query failed: {str(e)}")
 
-# 백엔드(자바)데이터 동기화 엔드포인트
 
+################################################################################################
+# 백엔드(자바)데이터 동기화 엔드포인트
 # 특정 레코드만 인덱싱하는 엔드포인트
 @app.post("/index/record/{table_name}/{record_id}")
 def index_single_record(table_name: str, record_id: int, db: Session = Depends(get_db)):
@@ -318,7 +328,7 @@ def delete_from_index(table_name: str, record_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Index deletion failed: {str(e)}")
 
-
+################################################################################################
 
 if __name__ == "__main__":
     import uvicorn

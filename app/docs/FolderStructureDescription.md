@@ -22,7 +22,7 @@ app/
 │   │   └── filtering/       # 질문 필터 분별 로직
 │   └── embedding/           # 임베딩 처리 로직
 │
-├── vectorstore/             # 벡터 저장소 관련
+├── vectordb/             # 벡터 저장소 관련
 │   ├── config/              # 벡터 저장소 설정
 │   ├── indexing/            # 인덱싱 작업 관리
 │   ├── search/              # 유사도 검색 구현
