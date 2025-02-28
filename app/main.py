@@ -14,6 +14,8 @@ from services.indexing.indexing_service import IndexingService
 from vectordb.qdrant_store import QdrantVectorStore
 from data.embedding.embedding import EmbeddingService
 from cache.query_cache import QueryCache
+from postprocessing.threshold.threshold_filter import ThresholdFilter
+from services.similarity.search_service import SearchService
 
 from api.routes.chat_routes import router as chat_router
 
@@ -23,7 +25,13 @@ embedding_service = EmbeddingService()
 vector_store = QdrantVectorStore()
 indexing_service = IndexingService(embedding_service, vector_store)
 query_cache = QueryCache()
-
+threshold_filter = ThresholdFilter(threshold=0.1)  # 임계값 설정 (필요에 따라 조정)
+search_service = SearchService(
+    vector_store=vector_store,
+    embedding_service=embedding_service,
+    threshold_filter=threshold_filter,
+    query_cache=query_cache
+)
 
 Base.metadata.create_all(bind=engine)
 
@@ -63,33 +71,15 @@ def index_table(table_name: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Indexing failed: {str(e)}")
     
 @app.get("/search")
-def search_similar(query: str, top_k: int = 5, use_cache: bool = True):
+def search_similar(query: str, top_k: int = 5, use_cache: bool = True, threshold: float = None):
     try:
-        # 캐시 확인
-        if use_cache:
-            cached_results = query_cache.get(query)
-            if cached_results:
-                return {
-                    "status": "success", 
-                    "query": query,
-                    "results": cached_results,
-                    "source": "cache"
-                }
+        # 요청별 임계값 설정 가능 (기본값 사용)
+        if threshold is not None:
+            threshold_filter.threshold = threshold
         
-        # 캐시에 없으면 새로 검색
-        query_embedding = embedding_service.generate_embeddings([query])[0]
-        results = vector_store.search(query_embedding, top_k)
-        
-        # 결과 캐싱
-        if use_cache:
-            query_cache.set(query, results)
-        
-        return {
-            "status": "success", 
-            "query": query,
-            "results": results,
-            "source": "search"
-        }
+        # 검색 수행
+        result = search_service.search(query, top_k, use_cache)
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
