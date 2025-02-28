@@ -15,6 +15,9 @@ from vectordb.qdrant_store import QdrantVectorStore
 from data.embedding.embedding import EmbeddingService
 from cache.query_cache import QueryCache
 
+from api.routes.chat_routes import router as chat_router
+
+
 #서비스 초기화
 embedding_service = EmbeddingService()
 vector_store = QdrantVectorStore()
@@ -25,6 +28,7 @@ query_cache = QueryCache()
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
+app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
 
 # ✅ CORS 미들웨어 추가
 app.add_middleware(
@@ -253,6 +257,12 @@ def get_table_data(table_name: str, limit: int = 10, db: Session = Depends(get_d
         return {"status": "success", "table": table_name, "data": data, "count": len(data)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database query failed: {str(e)}")
+
+
+################################################################################################
+# 프론트 통신
+
+################################################################################################
 
 
 ################################################################################################
