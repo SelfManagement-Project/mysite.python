@@ -21,6 +21,7 @@ router = APIRouter()
 @router.post("/send")
 def chat_send(request: ChatRequest, db: Session = Depends(get_db)) -> Dict:
     global chat_service
+    # print(request)
     try:
         # 최초 호출 시 채팅 서비스 초기화
         if chat_service is None:
