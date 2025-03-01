@@ -17,6 +17,8 @@ from cache.query_cache import QueryCache
 from postprocessing.threshold.threshold_filter import ThresholdFilter
 from services.similarity.search_service import SearchService
 from postprocessing.ranking.ranking import RankingProcessor
+from llm.models.deepseek_model import DeepSeekLLM
+from services.chat.chat_service import ChatService
 
 from api.routes.chat_routes import router as chat_router
 
@@ -35,6 +37,7 @@ search_service = SearchService(
     query_cache=query_cache,
     ranking_processor=ranking_processor
 )
+llm_model = DeepSeekLLM(model_name="deepseek-ai/deepseek-coder-6.7b-instruct")
 
 Base.metadata.create_all(bind=engine)
 

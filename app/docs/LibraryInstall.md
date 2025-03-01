@@ -23,9 +23,9 @@ pip install sentence-transformers
 
 pip install qdrant-client numpy
 
+pip install transformers torch
 
-
-
+pip install "accelerate>=0.26.0"
 
 
 
