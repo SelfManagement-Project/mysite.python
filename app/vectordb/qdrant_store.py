@@ -111,3 +111,18 @@ class QdrantVectorStore:
             collection_name=self.collection_name,
             points_selector=models.FilterSelector(filter=filter_obj)
         )
+        
+    def delete_all(self):
+        """컬렉션의 모든 벡터 삭제"""
+        try:
+            # 빈 필터를 사용하여 모든 점 삭제
+            empty_filter = models.Filter()  # 빈 필터 객체 생성
+            
+            self.client.delete(
+                collection_name=self.collection_name,
+                points_selector=models.FilterSelector(filter=empty_filter)
+            )
+            return True
+        except Exception as e:
+            print(f"데이터 삭제 중 오류 발생: {e}")
+            return False

@@ -4,6 +4,7 @@ from data.embedding.embedding import EmbeddingService
 from postprocessing.threshold.threshold_filter import ThresholdFilter
 from cache.query_cache import QueryCache
 from typing import List, Dict, Any, Optional
+from postprocessing.ranking.ranking import RankingProcessor
 
 class SearchService:
     def __init__(
@@ -12,12 +13,14 @@ class SearchService:
         embedding_service: EmbeddingService,
         threshold_filter: Optional[ThresholdFilter] = None,
         query_cache: Optional[QueryCache] = None,
+        ranking_processor: Optional[RankingProcessor] = None,
         cache_enabled: bool = True
     ):
         self.vector_store = vector_store
         self.embedding_service = embedding_service
         self.threshold_filter = threshold_filter or ThresholdFilter()
         self.query_cache = query_cache
+        self.ranking_processor = ranking_processor or RankingProcessor()
         self.cache_enabled = cache_enabled
     
     def search(self, query: str, top_k: int = 5, use_cache: bool = True) -> Dict[str, Any]:
@@ -41,26 +44,29 @@ class SearchService:
                     "query": query,
                     "results": cached_results,
                     "source": "cache",
-                    "filtered": True  # 캐시된 결과는 이미 필터링되었다고 가정
+                    "filtered": True
                 }
         
         # 2. 질문 임베딩 생성
         query_embedding = self.embedding_service.generate_embeddings([query])[0]
         
         # 3. 벡터 검색 수행
-        raw_results = self.vector_store.search(query_embedding, top_k * 2)  # 필터링 후 충분한 결과를 확보하기 위해 2배로 요청
+        raw_results = self.vector_store.search(query_embedding, top_k * 2)
         
         # 4. 임계값 기반 필터링
         filtered_results = self.threshold_filter.filter_results(raw_results)
         
-        # 5. 상위 K개만 선택
-        top_results = filtered_results[:top_k] if len(filtered_results) > top_k else filtered_results
+        # 5. 랭킹 알고리즘 적용 (새로 추가된 부분)
+        ranked_results = self.ranking_processor.rerank_with_custom_rules(filtered_results, query)
         
-        # 6. 결과 캐싱 (옵션)
+        # 6. 상위 K개만 선택
+        top_results = ranked_results[:top_k] if len(ranked_results) > top_k else ranked_results
+        
+        # 7. 결과 캐싱 (옵션)
         if self.cache_enabled and use_cache and self.query_cache:
             self.query_cache.set(query, top_results)
         
-        # 7. 결과 반환
+        # 8. 결과 반환
         return {
             "status": "success", 
             "query": query,

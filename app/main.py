@@ -16,21 +16,24 @@ from data.embedding.embedding import EmbeddingService
 from cache.query_cache import QueryCache
 from postprocessing.threshold.threshold_filter import ThresholdFilter
 from services.similarity.search_service import SearchService
+from postprocessing.ranking.ranking import RankingProcessor
 
 from api.routes.chat_routes import router as chat_router
 
 
-#서비스 초기화
+# 서비스 초기화
 embedding_service = EmbeddingService()
 vector_store = QdrantVectorStore()
 indexing_service = IndexingService(embedding_service, vector_store)
 query_cache = QueryCache()
-threshold_filter = ThresholdFilter(threshold=0.1)  # 임계값 설정 (필요에 따라 조정)
+threshold_filter = ThresholdFilter(threshold=0.1)
+ranking_processor = RankingProcessor()  # 랭킹 프로세서 초기화
 search_service = SearchService(
     vector_store=vector_store,
     embedding_service=embedding_service,
     threshold_filter=threshold_filter,
-    query_cache=query_cache
+    query_cache=query_cache,
+    ranking_processor=ranking_processor
 )
 
 Base.metadata.create_all(bind=engine)
@@ -46,6 +49,18 @@ app.add_middleware(
     allow_methods=["*"],  # 모든 HTTP 메서드 허용 (GET, POST, PUT, DELETE 등)
     allow_headers=["*"],  # 모든 헤더 허용
 )
+
+@app.post("/reset-vectordb")
+def reset_vector_database():
+    try:
+        # 모든 벡터 데이터 삭제
+        success = vector_store.delete_all()
+        if success:
+            return {"status": "success", "message": "모든 벡터 데이터가 삭제되었습니다."}
+        else:
+            raise HTTPException(status_code=500, detail="벡터 데이터 삭제 실패")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"벡터 데이터베이스 초기화 실패: {str(e)}")
 
 @app.post("/index/all")
 def index_all_tables(db: Session = Depends(get_db)):
