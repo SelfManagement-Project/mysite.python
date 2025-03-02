@@ -1,12 +1,16 @@
 # services/chat/chat_service.py
 from llm.models.deepseek_model import DeepSeekLLM
 from llm.prompts.chat_prompt import PromptTemplate
-from services.similarity.search_service import SearchService
+from services.similarity.enhanced_search_service import EnhancedSearchService
 from typing import Dict, Any, Optional, List
+from postprocessing.response.response_processor import ResponseProcessor
+from postprocessing.formatter.response_formatter import ResponseFormatter
+from postprocessing.validation.validation import ResponseValidator
+import time
 
 class ChatService:
     def __init__(self, 
-                 search_service: SearchService, 
+                 search_service: EnhancedSearchService, 
                  llm_model: Optional[DeepSeekLLM] = None,
                  max_context_items: int = 5):
         """
@@ -21,11 +25,20 @@ class ChatService:
         self.llm_model = llm_model if llm_model else DeepSeekLLM()
         self.max_context_items = max_context_items
         
+        # 사후처리 모듈 초기화
+        self.response_processor = ResponseProcessor()
+        self.response_formatter = ResponseFormatter()
+        self.response_validator = ResponseValidator()
+        
+        # 채팅 히스토리 저장소
+        self.chat_histories = {}
+        
     def process_message(self, 
                         message: str, 
                         user_id: int, 
                         chat_id: Optional[int] = None, 
-                        search_threshold: float = 0.45) -> Dict[str, Any]:
+                        search_threshold: float = 0.45,
+                        output_format: str = "default") -> Dict[str, Any]:
         """
         사용자 메시지 처리 및 응답 생성
         
@@ -34,11 +47,20 @@ class ChatService:
             user_id: 사용자 ID
             chat_id: 채팅 ID (선택 사항)
             search_threshold: 검색 임계값
+            output_format: 응답 형식 (default, simple, detailed, markdown)
             
         Returns:
             응답 정보
         """
-        # 1. 벡터 검색 수행
+        start_time = time.time()
+        
+        # 채팅 기록 키 생성
+        chat_key = f"{user_id}_{chat_id}" if chat_id else f"{user_id}"
+        
+        # 1. 쿼리 분석 및 검색 기준 설정
+        criteria = self._analyze_query_for_criteria(message, user_id)
+        
+        # 2. 향상된 벡터 검색 수행
         search_results = self.search_service.search(
             query=message, 
             top_k=self.max_context_items, 
@@ -48,27 +70,140 @@ class ChatService:
         # 검색 결과 가져오기
         context_items = search_results.get('results', [])
         
-        # 2. 프롬프트 생성
-        prompt = PromptTemplate.create_prompt_from_context(
-            query=message,
+        # 3. 채팅 히스토리 가져오기
+        chat_history = self.chat_histories.get(chat_key, [])
+        
+        # 4. 향상된 프롬프트 생성 (채팅 기록 포함)
+        if len(chat_history) > 0:
+            prompt = PromptTemplate.create_prompt_with_history(
+                query=message,
+                context_items=context_items,
+                chat_history=chat_history[-3:],  # 최근 3개 대화만 포함
+                format_type=output_format
+            )
+        else:
+            prompt = PromptTemplate.create_prompt_from_context(
+                query=message,
+                context_items=context_items,
+                format_type=output_format
+            )
+        
+        # 5. 적응형 LLM 응답 생성
+        llm_response = self.llm_model.generate(
+            prompt=prompt,
+            adaptive=True,
             context_items=context_items
         )
         
-        # 3. LLM으로 응답 생성
-        llm_response = self.llm_model.generate(
-            prompt=prompt,
-            max_tokens=1024,
-            temperature=0.7
+        # 6. 응답 검증
+        is_valid, validation_issues = self.response_validator.validate(
+            llm_response, 
+            context_items
         )
         
-        # 4. 응답 구성
+        # 7. 응답이 충분히 유효하지 않으면 다시 생성 시도 (최대 1회)
+        if not is_valid and not any("불완전" in issue for issue in validation_issues):
+            # 다른 파라미터로 재시도
+            llm_response = self.llm_model.generate(
+                prompt=prompt,
+                preset="precise",  # 더 정확한 응답 유도
+                max_tokens=1536    # 더 긴 응답 허용
+            )
+            # 다시 검증
+            is_valid, validation_issues = self.response_validator.validate(
+                llm_response, 
+                context_items
+            )
+        
+        # 8. 응답 후처리
+        processed_response = self.response_processor.process(
+            llm_response=llm_response,
+            context_items=context_items,
+            query=message
+        )
+        
+        # 9. 응답 포맷팅
+        formatted_response = self.response_formatter.format(
+            processed_response=processed_response,
+            output_format=output_format
+        )
+        
+        # 10. 채팅 기록 업데이트
+        chat_history.append({"role": "user", "content": message})
+        chat_history.append({"role": "assistant", "content": formatted_response.get("formatted_response", llm_response)})
+        self.chat_histories[chat_key] = chat_history
+        
+        # 11. 응답 구성
         response = {
             "user_id": user_id,
             "chat_id": chat_id,
             "message": message,
-            "response": llm_response,
-            "context_items": [item.get('metadata', {}).get('text', '') for item in context_items[:3]],  # 디버깅용 컨텍스트 일부 반환
+            "response": formatted_response.get("formatted_response", llm_response),
+            "processing_time": time.time() - start_time,
+            "context_items": [item.get('metadata', {}).get('text', '') for item in context_items[:3]],
+            "sources": formatted_response.get("sources", []),
+            "validation": {
+                "is_valid": is_valid,
+                "issues": validation_issues if not is_valid else []
+            },
+            "filtered": formatted_response.get("filtered", False),
             "status": "success"
         }
         
         return response
+    
+    def _analyze_query_for_criteria(self, query: str, user_id: int) -> Dict[str, Any]:
+        """
+        쿼리 분석을 통한 검색 기준 생성
+        
+        Args:
+            query: 사용자 쿼리
+            user_id: 사용자 ID
+            
+        Returns:
+            검색 기준 사전
+        """
+        criteria = {}
+        
+        # 기본 사용자 관련성 설정
+        criteria["user_relevance"] = True
+        criteria["user_id"] = user_id
+        criteria["user_weight"] = 0.8
+        
+        # 시간 관련 키워드 탐지
+        time_keywords = ["언제", "날짜", "기간", "오늘", "내일", "어제", "최근", "일정", "약속"]
+        if any(keyword in query for keyword in time_keywords):
+            criteria["recency"] = True
+            criteria["recency_weight"] = 0.9
+            criteria["date_field"] = "created_at"
+            
+            # 일정 관련 테이블 우선
+            criteria["source_priority"] = True
+            criteria["priority_sources"] = ["schedule", "habit", "daily_log"]
+            criteria["source_weight"] = 0.7
+        
+        # 개인 습관 관련 키워드 탐지
+        habit_keywords = ["습관", "루틴", "매일", "반복", "목표"]
+        if any(keyword in query for keyword in habit_keywords):
+            criteria["source_priority"] = True
+            criteria["priority_sources"] = ["habit", "daily_log", "task"]
+            criteria["source_weight"] = 0.8
+        
+        # 대화/메시지 관련 키워드 탐지
+        chat_keywords = ["대화", "메시지", "채팅", "연락", "문자"]
+        if any(keyword in query for keyword in chat_keywords):
+            criteria["source_priority"] = True
+            criteria["priority_sources"] = ["chat", "message", "contact"]
+            criteria["source_weight"] = 0.85
+            
+        return criteria
+    
+    def clear_chat_history(self, user_id: int, chat_id: Optional[int] = None) -> bool:
+        """
+        채팅 기록 삭제
+        """
+        chat_key = f"{user_id}_{chat_id}" if chat_id else f"{user_id}"
+        if chat_key in self.chat_histories:
+            del self.chat_histories[chat_key]
+            return True
+        return False
