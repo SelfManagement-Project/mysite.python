@@ -37,7 +37,7 @@ search_service = SearchService(
     query_cache=query_cache,
     ranking_processor=ranking_processor
 )
-llm_model = DeepSeekLLM(model_name="deepseek-ai/deepseek-coder-6.7b-instruct")
+llm_model = DeepSeekLLM(model_name = "deepseek-ai/deepseek-coder-1.3b-instruct", device="cuda")
 
 Base.metadata.create_all(bind=engine)
 

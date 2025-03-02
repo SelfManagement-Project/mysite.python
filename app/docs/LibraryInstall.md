@@ -27,8 +27,11 @@ pip install transformers torch
 
 pip install "accelerate>=0.26.0"
 
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
+pip install accelerate
 
+pip install bitsandbytes
 
 
 

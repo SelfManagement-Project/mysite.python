@@ -1,10 +1,9 @@
-# llm/models/deepseek_model.py
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from typing import Dict, List, Any, Optional
 
 class DeepSeekLLM:
-    def __init__(self, model_name: str = "deepseek-ai/deepseek-coder-6.7b-instruct", device: str = "cuda"):
+    def __init__(self, model_name: str = "deepseek-ai/deepseek-coder-1.3b-instruct", device: str = "cuda"):
         """
         DeepSeek LLM 모델 초기화
         
@@ -12,35 +11,50 @@ class DeepSeekLLM:
             model_name: 사용할 DeepSeek 모델 이름
             device: 모델을 로드할 디바이스 (cuda, cpu)
         """
+        # CUDA 사용 가능 여부 체크 및, 디바이스 설정 및 로그 출력
         self.device = "cuda" if torch.cuda.is_available() and device == "cuda" else "cpu"
         print(f"Loading DeepSeek model on {self.device}...")
+        print(f"CUDA available: {torch.cuda.is_available()}")
         
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        if torch.cuda.is_available():
+            print(f"CUDA device: {torch.cuda.get_device_name(0)}")
+            print(f"CUDA device count: {torch.cuda.device_count()}")
+        
+        # 토크나이저 로드
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+        
+        # 8비트 양자화 설정 생성
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_use_double_quant=True
+        )
+        
+        # 모델 로드 (8비트 양자화 및 CPU 오프로딩 적용)
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name,
-            torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
-            low_cpu_mem_usage=True
-        ).to(self.device)
-        
+            quantization_config=quantization_config,
+            device_map="auto",
+            trust_remote_code=True
+        )
+            
         print("DeepSeek model loaded successfully")
     
     def generate(self, prompt: str, max_tokens: int = 1024, temperature: float = 0.7) -> str:
-        """
-        주어진 프롬프트에 대한 텍스트 생성
+        # 토크나이저로 입력 인코딩 (attention_mask 포함)
+        inputs = self.tokenizer(
+            prompt, 
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            return_attention_mask=True  # attention_mask 반환 명시
+        ).to(self.device)
         
-        Args:
-            prompt: 프롬프트 텍스트
-            max_tokens: 생성할 최대 토큰 수
-            temperature: 생성 다양성 조절 파라미터
-            
-        Returns:
-            생성된 텍스트
-        """
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-        
+        # 추론 모드로 전환
         with torch.no_grad():
             output = self.model.generate(
                 inputs.input_ids,
+                attention_mask=inputs.attention_mask,  # attention_mask 전달
                 max_new_tokens=max_tokens,
                 temperature=temperature,
                 do_sample=True,
