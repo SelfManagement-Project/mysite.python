@@ -91,10 +91,10 @@ class ChatService:
         # 5. 적응형 LLM 응답 생성
         llm_response = self.llm_model.generate(
             prompt=prompt,
-            adaptive=True,
-            context_items=context_items
+            temperature=0.1,     # 온도를 낮게 설정
+            max_tokens=256      # 응답 길이 제한
+            # repetition_penalty 제거
         )
-        
         # 6. 응답 검증
         is_valid, validation_issues = self.response_validator.validate(
             llm_response, 
@@ -106,8 +106,9 @@ class ChatService:
             # 다른 파라미터로 재시도
             llm_response = self.llm_model.generate(
                 prompt=prompt,
-                preset="precise",  # 더 정확한 응답 유도
-                max_tokens=1536    # 더 긴 응답 허용
+                temperature=0.05,    # 더 낮은 온도
+                max_tokens=256      # 응답 길이 제한
+                # repetition_penalty 제거
             )
             # 다시 검증
             is_valid, validation_issues = self.response_validator.validate(

@@ -4,8 +4,8 @@ from typing import List, Dict, Any
 from sentence_transformers import SentenceTransformer
 
 class EmbeddingService:
-    def __init__(self, model_name="all-MiniLM-L6-v2"):
-        """임베딩 서비스 초기화"""
+    def __init__(self, model_name="paraphrase-multilingual-MiniLM-L12-v2"):
+        """임베딩 서비스 초기화 - 다국어 지원 모델로 변경"""
         self.model = SentenceTransformer(model_name)
     
     def generate_embeddings(self, texts: List[str]) -> List[np.ndarray]:
