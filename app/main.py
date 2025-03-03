@@ -19,6 +19,9 @@ from services.similarity.search_service import SearchService
 from postprocessing.ranking.ranking import RankingProcessor
 from llm.models.deepseek_model import DeepSeekLLM
 from services.chat.chat_service import ChatService
+from utils.translation_utils import TranslationService
+from config.settings.settings import TRANSLATION_SETTINGS
+
 
 from api.routes.chat_routes import router as chat_router
 
@@ -30,14 +33,27 @@ indexing_service = IndexingService(embedding_service, vector_store)
 query_cache = QueryCache()
 threshold_filter = ThresholdFilter(threshold=0.1)
 ranking_processor = RankingProcessor()  # 랭킹 프로세서 초기화
+translation_enabled = TRANSLATION_SETTINGS.get("enabled", True)
+embedding_service = EmbeddingService(model_name="paraphrase-multilingual-MiniLM-L12-v2")
+
+
+
 search_service = SearchService(
     vector_store=vector_store,
     embedding_service=embedding_service,
     threshold_filter=threshold_filter,
     query_cache=query_cache,
-    ranking_processor=ranking_processor
+    ranking_processor=ranking_processor,
+    translation_enabled=translation_enabled
 )
+
 llm_model = DeepSeekLLM(model_name = "deepseek-ai/deepseek-coder-1.3b-instruct", device="cuda")
+
+chat_service = ChatService(
+    search_service=search_service,
+    llm_model=llm_model,
+    translation_enabled=translation_enabled
+)
 
 Base.metadata.create_all(bind=engine)
 
@@ -266,7 +282,32 @@ def get_table_data(table_name: str, limit: int = 10, db: Session = Depends(get_d
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database query failed: {str(e)}")
 
-
+# 번역 테스트 엔드포인트
+@app.get("/translate")
+def translate_text(text: str):
+    try:
+        # TranslationService 인스턴스 생성
+        translation_service = TranslationService(source_lang="ko", target_lang="en")
+        
+        # 원본 텍스트를 영어로 번역
+        translated_text = translation_service.translate_to_target(text)
+        
+        # 영어 텍스트를 다시 한국어로 번역 (역방향 테스트)
+        back_translated = translation_service.translate_to_source(translated_text)
+        
+        # 임베딩 생성 테스트
+        embedding = embedding_service.generate_embeddings([text], translate=True)[0]
+        
+        return {
+            "status": "success",
+            "original_text": text,
+            "translated_text": translated_text,
+            "back_translated": back_translated,
+            "embedding_shape": len(embedding),
+            "translation_enabled": translation_enabled
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
 ################################################################################################
 # 프론트 통신
 

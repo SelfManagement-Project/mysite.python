@@ -1,34 +1,35 @@
 # services/chat/chat_service.py
 from llm.models.deepseek_model import DeepSeekLLM
 from llm.prompts.chat_prompt import PromptTemplate
-from services.similarity.enhanced_search_service import EnhancedSearchService
 from typing import Dict, Any, Optional, List
 from postprocessing.response.response_processor import ResponseProcessor
 from postprocessing.formatter.response_formatter import ResponseFormatter
 from postprocessing.validation.validation import ResponseValidator
+from utils.translation_utils import TranslationService
 import time
 
 class ChatService:
     def __init__(self, 
-                 search_service: EnhancedSearchService, 
+                 search_service,
                  llm_model: Optional[DeepSeekLLM] = None,
-                 max_context_items: int = 5):
+                 max_context_items: int = 5,
+                 translation_enabled: bool = True):
         """
         챗봇 서비스 초기화
-        
-        Args:
-            search_service: 벡터 검색 서비스
-            llm_model: LLM 모델 인스턴스
-            max_context_items: 프롬프트에 포함할 최대 컨텍스트 항목 수
         """
         self.search_service = search_service
         self.llm_model = llm_model if llm_model else DeepSeekLLM()
         self.max_context_items = max_context_items
+        self.translation_enabled = translation_enabled
         
         # 사후처리 모듈 초기화
         self.response_processor = ResponseProcessor()
         self.response_formatter = ResponseFormatter()
         self.response_validator = ResponseValidator()
+        
+        # 번역 서비스 초기화
+        if self.translation_enabled:
+            self.translation_service = TranslationService(source_lang="ko", target_lang="en")
         
         # 채팅 히스토리 저장소
         self.chat_histories = {}
@@ -41,16 +42,6 @@ class ChatService:
                         output_format: str = "default") -> Dict[str, Any]:
         """
         사용자 메시지 처리 및 응답 생성
-        
-        Args:
-            message: 사용자 메시지
-            user_id: 사용자 ID
-            chat_id: 채팅 ID (선택 사항)
-            search_threshold: 검색 임계값
-            output_format: 응답 형식 (default, simple, detailed, markdown)
-            
-        Returns:
-            응답 정보
         """
         start_time = time.time()
         
@@ -60,9 +51,20 @@ class ChatService:
         # 1. 쿼리 분석 및 검색 기준 설정
         criteria = self._analyze_query_for_criteria(message, user_id)
         
-        # 2. 향상된 벡터 검색 수행
+        # 원본 메시지 저장
+        original_message = message
+        
+        # 2. 메시지 번역 (옵션)
+        if self.translation_enabled:
+            translated_message = self.translation_service.translate_to_target(message)
+            print(f"원본 메시지: {message}")
+            print(f"번역된 메시지: {translated_message}")
+        else:
+            translated_message = message
+        
+        # 3. 벡터 검색 수행 (번역 기능은 search_service 내부에서 처리)
         search_results = self.search_service.search(
-            query=message, 
+            query=message,  # 원본 메시지 전달 (SearchService 내부에서 번역)
             top_k=self.max_context_items, 
             use_cache=True
         )
@@ -70,75 +72,105 @@ class ChatService:
         # 검색 결과 가져오기
         context_items = search_results.get('results', [])
         
-        # 3. 채팅 히스토리 가져오기
+        # 4. 채팅 히스토리 가져오기
         chat_history = self.chat_histories.get(chat_key, [])
         
-        # 4. 향상된 프롬프트 생성 (채팅 기록 포함)
+        # 5. 프롬프트 생성 (채팅 기록 포함)
         if len(chat_history) > 0:
-            prompt = PromptTemplate.create_prompt_with_history(
-                query=message,
-                context_items=context_items,
-                chat_history=chat_history[-3:],  # 최근 3개 대화만 포함
-                format_type=output_format
-            )
+            if self.translation_enabled:
+                # 번역된 메시지와 컨텍스트로 프롬프트 생성
+                prompt = PromptTemplate.create_prompt_with_history(
+                    query=translated_message,
+                    context_items=context_items,
+                    chat_history=chat_history[-3:],  # 최근 3개 대화만 포함
+                    format_type=output_format
+                )
+            else:
+                prompt = PromptTemplate.create_prompt_with_history(
+                    query=message,
+                    context_items=context_items,
+                    chat_history=chat_history[-3:],
+                    format_type=output_format
+                )
         else:
-            prompt = PromptTemplate.create_prompt_from_context(
-                query=message,
-                context_items=context_items,
-                format_type=output_format
-            )
+            if self.translation_enabled:
+                prompt = PromptTemplate.create_prompt_from_context(
+                    query=translated_message,
+                    context_items=context_items,
+                    format_type=output_format
+                )
+            else:
+                prompt = PromptTemplate.create_prompt_from_context(
+                    query=message,
+                    context_items=context_items,
+                    format_type=output_format
+                )
         
-        # 5. 적응형 LLM 응답 생성
+        # 6. LLM 응답 생성
         llm_response = self.llm_model.generate(
             prompt=prompt,
-            temperature=0.1,     # 온도를 낮게 설정
-            max_tokens=256      # 응답 길이 제한
-            # repetition_penalty 제거
+            temperature=0.1,
+            max_tokens=256
         )
-        # 6. 응답 검증
+        
+        # 7. 영어 응답을 한국어로 번역 (옵션)
+        if self.translation_enabled:
+            original_llm_response = llm_response
+            llm_response = self.translation_service.translate_to_source(llm_response)
+            print(f"원본 응답: {original_llm_response}")
+            print(f"번역된 응답: {llm_response}")
+        
+        # 8. 응답 검증
         is_valid, validation_issues = self.response_validator.validate(
             llm_response, 
             context_items
         )
         
-        # 7. 응답이 충분히 유효하지 않으면 다시 생성 시도 (최대 1회)
+        # 9. 응답이 충분히 유효하지 않으면 다시 생성 시도 (최대 1회)
         if not is_valid and not any("불완전" in issue for issue in validation_issues):
             # 다른 파라미터로 재시도
-            llm_response = self.llm_model.generate(
+            retry_response = self.llm_model.generate(
                 prompt=prompt,
-                temperature=0.05,    # 더 낮은 온도
-                max_tokens=256      # 응답 길이 제한
-                # repetition_penalty 제거
+                temperature=0.05,
+                max_tokens=256
             )
+            
+            # 재시도 응답 번역 (옵션)
+            if self.translation_enabled:
+                retry_response = self.translation_service.translate_to_source(retry_response)
+                
             # 다시 검증
-            is_valid, validation_issues = self.response_validator.validate(
-                llm_response, 
-                context_items
-            )
+            retry_valid, retry_issues = self.response_validator.validate(retry_response, context_items)
+            
+            # 재시도가 더 나은 경우 업데이트
+            if retry_valid or len(retry_issues) < len(validation_issues):
+                llm_response = retry_response
+                is_valid = retry_valid
+                validation_issues = retry_issues
         
-        # 8. 응답 후처리
+        # 10. 응답 후처리
         processed_response = self.response_processor.process(
             llm_response=llm_response,
             context_items=context_items,
-            query=message
+            query=original_message  # 원본 메시지 사용
         )
         
-        # 9. 응답 포맷팅
+        # 11. 응답 포맷팅
         formatted_response = self.response_formatter.format(
             processed_response=processed_response,
             output_format=output_format
         )
         
-        # 10. 채팅 기록 업데이트
-        chat_history.append({"role": "user", "content": message})
+        # 12. 채팅 기록 업데이트
+        chat_history.append({"role": "user", "content": original_message})
         chat_history.append({"role": "assistant", "content": formatted_response.get("formatted_response", llm_response)})
         self.chat_histories[chat_key] = chat_history
         
-        # 11. 응답 구성
+        # 13. 응답 구성
         response = {
             "user_id": user_id,
             "chat_id": chat_id,
-            "message": message,
+            "message": original_message,
             "response": formatted_response.get("formatted_response", llm_response),
             "processing_time": time.time() - start_time,
             "context_items": [item.get('metadata', {}).get('text', '') for item in context_items[:3]],
@@ -153,16 +185,10 @@ class ChatService:
         
         return response
     
+    # _analyze_query_for_criteria 메서드는 그대로 유지
     def _analyze_query_for_criteria(self, query: str, user_id: int) -> Dict[str, Any]:
         """
         쿼리 분석을 통한 검색 기준 생성
-        
-        Args:
-            query: 사용자 쿼리
-            user_id: 사용자 ID
-            
-        Returns:
-            검색 기준 사전
         """
         criteria = {}
         

@@ -33,6 +33,22 @@ pip install accelerate
 
 pip install bitsandbytes
 
+pip install googletrans==4.0.0-rc1  # 구글 번역 API 클라이언트
+# 또는 더 안정적인 대안
+pip install deep-translator  # 여러 번역 API를 지원하는 라이브러리
+
+pip install --upgrade httpx qdrant-client
+
+
+
+
+
+
+
+
+
+
+
 
 
 pip install -r requirements.txt //라이브러리가 모두 설치된다.
