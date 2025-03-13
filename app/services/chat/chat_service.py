@@ -38,7 +38,7 @@ class ChatService:
                         message: str, 
                         user_id: int, 
                         chat_id: Optional[int] = None, 
-                        search_threshold: float = 0.45,
+                        search_threshold: float = 0.1,
                         output_format: str = "default") -> Dict[str, Any]:
         """
         사용자 메시지 처리 및 응답 생성
