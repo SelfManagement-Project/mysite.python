@@ -1,4 +1,5 @@
-# services/chat/chat_service.py
+# services/chat/chat_service.py 수정 버전
+
 from llm.models.deepseek_model import DeepSeekLLM
 from llm.prompts.chat_prompt import PromptTemplate
 from typing import Dict, Any, Optional, List
@@ -6,6 +7,7 @@ from postprocessing.response.response_processor import ResponseProcessor
 from postprocessing.formatter.response_formatter import ResponseFormatter
 from postprocessing.validation.validation import ResponseValidator
 from utils.translation_utils import TranslationService
+from sqlalchemy.orm import Session
 import time
 
 class ChatService:
@@ -39,9 +41,18 @@ class ChatService:
                         user_id: int, 
                         chat_id: Optional[int] = None, 
                         search_threshold: float = 0.1,
-                        output_format: str = "default") -> Dict[str, Any]:
+                        output_format: str = "default",
+                        db: Optional[Session] = None) -> Dict[str, Any]:
         """
         사용자 메시지 처리 및 응답 생성
+        
+        Args:
+            message: 사용자 메시지
+            user_id: 사용자 ID
+            chat_id: 채팅 ID (선택 사항)
+            search_threshold: 검색 임계값
+            output_format: 응답 형식
+            db: DB 세션 (데이터베이스 저장용)
         """
         start_time = time.time()
         
@@ -161,17 +172,72 @@ class ChatService:
             output_format=output_format
         )
         
+        # 최종 응답 텍스트
+        final_response = formatted_response.get("formatted_response", llm_response)
+        
         # 12. 채팅 기록 업데이트
         chat_history.append({"role": "user", "content": original_message})
-        chat_history.append({"role": "assistant", "content": formatted_response.get("formatted_response", llm_response)})
+        chat_history.append({"role": "assistant", "content": final_response})
         self.chat_histories[chat_key] = chat_history
         
-        # 13. 응답 구성
+        # 13. 데이터베이스에 저장 (db 세션이 제공된 경우)
+        # 13. 데이터베이스에 저장 (db 세션이 제공된 경우)
+        # 13. 데이터베이스에 저장 (db 세션이 제공된 경우)
+        if db:
+            from db.connection.database import Chat, ChatHistory
+            try:
+                # 채팅방 생성 또는 조회
+                existing_chat = None
+
+                # 먼저 session_id로 찾기 시도 (같은 세션이면 같은 chat 레코드 사용)
+                existing_chat = db.query(Chat).filter(Chat.session_id == chat_key).first()
+                
+                # 채팅방이 없으면 새로 생성
+                if not existing_chat:
+                    new_chat = Chat(
+                        user_id=user_id,
+                        session_id=chat_key,
+                        message=original_message,
+                        response=final_response,
+                        is_completed=False
+                    )
+                    db.add(new_chat)
+                    db.flush()
+                    chat_id = new_chat.chat_id
+                else:
+                    chat_id = existing_chat.chat_id
+                
+                # 채팅 히스토리에 새 메시지 추가 (항상 실행)
+                user_message = ChatHistory(
+                    chat_id=chat_id,
+                    session_id=chat_key,
+                    message_type="user",
+                    content=original_message
+                )
+                db.add(user_message)
+                
+                assistant_message = ChatHistory(
+                    chat_id=chat_id,
+                    session_id=chat_key,
+                    message_type="assistant",
+                    content=final_response
+                )
+                db.add(assistant_message)
+                
+                # 커밋
+                db.commit()
+                
+            except Exception as e:
+                if db:
+                    db.rollback()
+                print(f"DB 저장 중 오류 발생: {str(e)}")
+        
+        # 14. 응답 구성
         response = {
             "user_id": user_id,
             "chat_id": chat_id,
             "message": original_message,
-            "response": formatted_response.get("formatted_response", llm_response),
+            "response": final_response,
             "processing_time": time.time() - start_time,
             "context_items": [item.get('metadata', {}).get('text', '') for item in context_items[:3]],
             "sources": formatted_response.get("sources", []),

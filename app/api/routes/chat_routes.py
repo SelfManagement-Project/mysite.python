@@ -47,7 +47,7 @@ async def websocket_endpoint(
             data = await websocket.receive_text()
             print(f"[Received] User {user_id}: {data}")
 
-            # JSON 형태로 메시지를 받도록 명확히 처리 (권장)
+            # JSON 형태로 메시지를 받도록 명확히 처리
             message_data = json.loads(data)
             user_message = message_data.get("message")
 
@@ -55,11 +55,12 @@ async def websocket_endpoint(
                 await manager.send_json(user_id, {"error": "메시지가 비어 있습니다."})
                 continue
 
-            # 채팅 서비스에서 메시지 처리
+            # 채팅 서비스에서 메시지 처리 (DB 세션 전달)
             response = chat_service.process_message(
                 message=user_message,
                 user_id=user_id,
-                chat_id=chat_id
+                chat_id=chat_id,
+                db=db  # DB 세션 전달
             )
 
             # 클라이언트로 응답 전송
