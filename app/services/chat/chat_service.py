@@ -232,26 +232,39 @@ class ChatService:
         
         # 14. 응답을 임베딩하고 벡터 DB에 저장
         try:
-            # 사용자 메시지와 AI 응답을 하나의 문서로 결합
+            # 1. 채팅 내용(질문+응답) 저장
             chat_document = f"질문: {original_message}\n답변: {final_response}"
+            chat_embedding = self.search_service.embedding_service.generate_embeddings([chat_document])[0]
             
-            # 임베딩 생성
-            embedding = self.search_service.embedding_service.generate_embeddings([chat_document])[0]
-            
-            # 메타데이터 생성
-            metadata = {
+            chat_metadata = {
                 'table': 'chat_history',
-                'row_id': chat_id,  # 채팅 ID를 행 ID로 사용
+                'row_id': chat_id, 
                 'session_id': chat_key,
                 'user_id': user_id,
-                'text': chat_document,  # 원본 텍스트도 저장
+                'text': chat_document,
                 'timestamp': time.time()
             }
             
-            # 벡터 DB에 저장
-            self.search_service.vector_store.add_embeddings([embedding], [metadata])
+            # 2. 채팅 세션 정보 저장 (선택적)
+            chat_summary = f"사용자 {user_id}의 대화 세션 {chat_id}. 최근 메시지: {original_message}"
+            chat_session_embedding = self.search_service.embedding_service.generate_embeddings([chat_summary])[0]
             
-            print(f"Chat response indexed in vector DB: chat_id={chat_id}")
+            chat_session_metadata = {
+                'table': 'chat',
+                'row_id': chat_id,
+                'session_id': chat_key,
+                'user_id': user_id,
+                'text': chat_summary,
+                'timestamp': time.time()
+            }
+            
+            # 벡터 DB에 저장 (배치 처리)
+            self.search_service.vector_store.add_embeddings(
+                [chat_embedding, chat_session_embedding], 
+                [chat_metadata, chat_session_metadata]
+            )
+            
+            print(f"Chat data indexed in vector DB: chat_id={chat_id}")
             
         except Exception as e:
             print(f"Vector DB 저장 중 오류 발생: {str(e)}")
