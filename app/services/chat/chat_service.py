@@ -55,7 +55,7 @@ class ChatService:
             db: DB 세션 (데이터베이스 저장용)
         """
         start_time = time.time()
-        
+        print('test:::::::::::::::::::::::::', chat_id)
         # 채팅 기록 키 생성
         chat_key = f"{user_id}_{chat_id}" if chat_id else f"{user_id}"
         
