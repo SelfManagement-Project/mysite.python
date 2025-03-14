@@ -181,8 +181,6 @@ class ChatService:
         self.chat_histories[chat_key] = chat_history
         
         # 13. 데이터베이스에 저장 (db 세션이 제공된 경우)
-        # 13. 데이터베이스에 저장 (db 세션이 제공된 경우)
-        # 13. 데이터베이스에 저장 (db 세션이 제공된 경우)
         if db:
             from db.connection.database import Chat, ChatHistory
             try:
@@ -232,7 +230,33 @@ class ChatService:
                     db.rollback()
                 print(f"DB 저장 중 오류 발생: {str(e)}")
         
-        # 14. 응답 구성
+        # 14. 응답을 임베딩하고 벡터 DB에 저장
+        try:
+            # 사용자 메시지와 AI 응답을 하나의 문서로 결합
+            chat_document = f"질문: {original_message}\n답변: {final_response}"
+            
+            # 임베딩 생성
+            embedding = self.search_service.embedding_service.generate_embeddings([chat_document])[0]
+            
+            # 메타데이터 생성
+            metadata = {
+                'table': 'chat_history',
+                'row_id': chat_id,  # 채팅 ID를 행 ID로 사용
+                'session_id': chat_key,
+                'user_id': user_id,
+                'text': chat_document,  # 원본 텍스트도 저장
+                'timestamp': time.time()
+            }
+            
+            # 벡터 DB에 저장
+            self.search_service.vector_store.add_embeddings([embedding], [metadata])
+            
+            print(f"Chat response indexed in vector DB: chat_id={chat_id}")
+            
+        except Exception as e:
+            print(f"Vector DB 저장 중 오류 발생: {str(e)}")
+        
+        # 15. 응답 구성
         response = {
             "user_id": user_id,
             "chat_id": chat_id,
