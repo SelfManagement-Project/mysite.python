@@ -187,8 +187,12 @@ class ChatService:
                 # 채팅방 생성 또는 조회
                 existing_chat = None
 
-                # 먼저 session_id로 찾기 시도 (같은 세션이면 같은 chat 레코드 사용)
-                existing_chat = db.query(Chat).filter(Chat.session_id == chat_key).first()
+                # chat_id가 제공된 경우 해당 ID로 직접 조회
+                if chat_id:
+                    existing_chat = db.query(Chat).filter(Chat.chat_id == chat_id).first()
+                # chat_id가 없으면 session_id로 조회 시도
+                else:
+                    existing_chat = db.query(Chat).filter(Chat.session_id == chat_key).first()
                 
                 # 채팅방이 없으면 새로 생성
                 if not existing_chat:
