@@ -9,15 +9,15 @@ class PromptTemplate:
         format_type: Optional[str] = "default"
     ) -> str:
         """
-        검색된 컨텍스트와 사용자 질문을 바탕으로 프롬프트 생성
+        Create a prompt based on retrieved context and user query
         
         Args:
-            query: 사용자 질문
-            context_items: 검색된 컨텍스트 항목 리스트
-            format_type: 응답 형식 타입 (default, detailed, simple)
+            query: User question (already translated to English)
+            context_items: List of retrieved context items
+            format_type: Response format type (default, detailed, simple)
             
         Returns:
-            최종 프롬프트 문자열
+            Final prompt string
         """
         # 컨텍스트 정보 추출 및 관련성 점수에 따라 정렬
         context_with_score = []
@@ -36,53 +36,53 @@ class PromptTemplate:
         # 정렬된 컨텍스트로 텍스트 구성
         context_texts = []
         for text, table, _ in context_with_score:
-            context_texts.append(f"[출처: {table}] {text}")
+            context_texts.append(f"[Source: {table}] {text}")
         
         # 컨텍스트 결합
         combined_context = "\n\n".join(context_texts)
         
-        # 응답 형식에 따른 프롬프트 구성
-        system_prompt = """당신은 개인 종합 관리 플랫폼의 지능형 비서입니다. 사용자가 한국어로 질문하면 한국어로 답변하세요. 사용자의 일정, 습관, 대화 기록 등의 정보를 바탕으로 명확하고 도움이 되는 답변을 제공해야 합니다.
+        # 영어 프롬프트로 변경
+        system_prompt = """You are an intelligent assistant for a personal management platform. You should provide clear and helpful answers based on the user's schedules, habits, conversation history, and other information.
 
-                        응답 작성 시 다음 규칙을 반드시 준수하세요:
-                        1. 제공된 정보만 사용하여 답변하고, 없는 정보는 추측하지 마세요.
-                        2. 자연스러운 한국어로 완전한 문장을 사용하세요.
-                        3. 내부 분석 과정이나 생각을 드러내지 마세요 (예: "이 쿼리는...", "정보를 찾아보니..." 등의 표현 사용 금지).
-                        4. 괄호나 특수 기호를 사용한 메타 주석을 포함하지 마세요 (예: "(이건 습관이구나)", "<분석중>" 등).
-                        5. 직접적이고 명확하게 답변하세요.
-                        6. 모든 응답은 완전한 문장으로 끝내고 적절한 종결어미를 사용하세요.
+                        When crafting your response, follow these rules:
+                        1. Only use the information provided and do not make assumptions about missing information.
+                        2. Use natural, complete sentences.
+                        3. Do not reveal your internal analysis process (e.g., avoid phrases like "This query is...", "Looking at the information...").
+                        4. Do not include meta-annotations in parentheses or special symbols (e.g., "(this is a habit)", "<analyzing>").
+                        5. Be direct and clear in your answers.
+                        6. End all responses with complete sentences and appropriate concluding words.
 
-                        잘못된 응답 예시:
-                        "아... '아침 조깅'?! -> (컴퓨터) :-) ... ('But there are many habits like this in the database')"
+                        Incorrect response example:
+                        "Ah... 'Morning jogging'?! -> (computer) :-) ... ('But there are many habits like this in the database')"
 
-                        올바른 응답 예시:
-                        "아침 조깅은 매일 오전 7시에 시작하는 습관으로 등록되어 있습니다. 이 습관은 2025년 2월 20일에 등록되었습니다."
+                        Correct response example:
+                        "Morning jogging is registered as a habit that starts at 7 AM daily. This habit was registered on February 20, 2025."
                         """
 
-        # 응답 형식 지정
+        # 응답 형식 지정 (영어로 변경)
         format_instruction = ""
         if format_type == "detailed":
-            format_instruction = """상세한 정보를 포함한 응답을 작성하세요. 가능한 모든 관련 정보를 구조적으로 제시하되, 자연스러운 한국어 문장으로 작성하세요."""
+            format_instruction = """Provide a detailed response that includes comprehensive information. Present all relevant information in a structured manner, using natural sentences."""
         elif format_type == "simple":
-            format_instruction = """간결하게 핵심 정보만 전달하는 응답을 작성하세요. 불필요한 세부 사항은 생략하세요."""
+            format_instruction = """Provide a concise response that only conveys essential information. Omit unnecessary details."""
         else:  # default
-            format_instruction = """명확하고 간결하게 응답하되, 필요한 모든 정보를 포함하세요. 자연스러운 대화체로 작성하세요."""
+            format_instruction = """Respond clearly and concisely, but include all necessary information. Use a natural conversational tone."""
 
-        # 최종 프롬프트 구성
+        # 최종 프롬프트 구성 (영어로)
         prompt = f"""{system_prompt}
                 {format_instruction}
 
-                다음은 사용자의 데이터베이스에서 추출한 관련 정보입니다:
+                The following is relevant information extracted from the user's database:
 
                 ---
                 {combined_context}
                 ---
 
-                위 정보를 바탕으로 다음 질문에 답변해주세요. 반드시 자연스러운 한국어로 응답하고, 내부 사고 과정이나 메타 주석을 포함하지 마세요:
+                Based on the information above, please answer the following question. Respond naturally and do not include your internal thought process or meta-annotations:
 
-                질문: {query}
+                Question: {query}
 
-                답변:"""
+                Answer:"""
         
         return prompt
 
@@ -95,17 +95,17 @@ class PromptTemplate:
         format_type: Optional[str] = "default"
     ) -> str:
         """
-        채팅 기록을 포함한 프롬프트 생성
+        Create a prompt that includes chat history
         
         Args:
-            query: 사용자 질문
-            context_items: 검색된 컨텍스트 항목 리스트
-            chat_history: 채팅 기록 리스트 [{"role": "user"/"assistant", "content": "메시지"}]
-            max_history_items: 포함할 최대 대화 기록 수
-            format_type: 응답 형식 타입
+            query: User question (already translated to English)
+            context_items: List of retrieved context items
+            chat_history: Chat history list [{"role": "user"/"assistant", "content": "message"}]
+            max_history_items: Maximum number of conversation history items to include
+            format_type: Response format type
             
         Returns:
-            최종 프롬프트 문자열
+            Final prompt string
         """
         # 기본 프롬프트 생성
         base_prompt = PromptTemplate.create_prompt_from_context(query, context_items, format_type)
@@ -117,18 +117,19 @@ class PromptTemplate:
         # 최근 대화 기록 선택 (최대 max_history_items개)
         recent_history = chat_history[-max_history_items:]
         
-        # 대화 기록 포맷팅
+        # 대화 기록 포맷팅 (영어로 변경)
         history_text = ""
         for entry in recent_history:
             role = entry.get("role", "")
             content = entry.get("content", "")
+            
             if role == "user":
-                history_text += f"사용자: {content}\n"
+                history_text += f"User: {content}\n"
             elif role == "assistant":
-                history_text += f"비서: {content}\n\n"
+                history_text += f"Assistant: {content}\n\n"
         
         # 대화 기록을 포함한 프롬프트 구성
-        history_prompt = f"""이전 대화 기록:
+        history_prompt = f"""Previous conversation:
                         ---
                         {history_text}
                         ---
@@ -136,10 +137,10 @@ class PromptTemplate:
                         """
         
         # 기존 프롬프트에 대화 기록 삽입
-        # "다음은 사용자의 데이터베이스에서..." 부분 앞에 대화 기록 삽입
-        parts = base_prompt.split("다음은 사용자의 데이터베이스에서")
+        # "The following is relevant information..." 부분 앞에 대화 기록 삽입
+        parts = base_prompt.split("The following is relevant information")
         if len(parts) == 2:
-            prompt_with_history = parts[0] + history_prompt + "다음은 사용자의 데이터베이스에서" + parts[1]
+            prompt_with_history = parts[0] + history_prompt + "The following is relevant information" + parts[1]
             return prompt_with_history
         
         return base_prompt
